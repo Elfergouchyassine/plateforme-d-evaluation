@@ -1,0 +1,17 @@
+[
+  {
+    "email": "prof@pdrp.fr",
+    "password": "123",
+    "role": "teacher"
+  },
+  {
+    "email": "eleve@pdrp.fr",
+    "password": "123",
+    "role": "student"
+  },
+  {
+    "email": "prof@test.com",
+    "password": "1234",
+    "role": "teacher"
+  }
+]

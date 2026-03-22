@@ -1,0 +1,301 @@
+:root {
+  --bg: #ffffff;
+  --primary: #2563eb;
+  --border: #e5e7eb;
+  --text: #111;
+  --muted: #666;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Layout principal */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  gap: 20px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+  font-weight: 500;
+}
+
+.controls select {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  background: white;
+  color: var(--text);
+}
+
+.btn-execute {
+  padding: 8px 20px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.btn-execute:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+/* Main content */
+.main-container {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  padding: 16px;
+  overflow: hidden;
+}
+
+/* Left section - Editor */
+.left-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editor-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.editor-section h2 {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  background: #f9fafb;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* Right section - Exercise */
+.right-section {
+  flex: 0 0 350px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.exercise-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.exercise-section h2 {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  background: #f0f4ff;
+  border-bottom: 1px solid var(--border);
+  color: var(--primary);
+}
+
+.exercise-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.exercise-content p {
+  margin: 0;
+}
+
+
+
+/* ...existing code... */
+
+/* CodeMirror styling */
+.cm-editor {
+  height: 100% !important;
+  flex: 1;
+  text-align: left !important;
+  overflow: hidden !important;
+}
+
+.cm-scroller {
+  font-size: 14px;
+  text-align: left !important;
+  overflow-y: scroll !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.cm-content {
+  text-align: left !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.cm-line {
+  text-align: left !important;
+  padding-right: 0 !important;
+}
+
+.cm-gutters {
+  background-color: #f9fafb !important;
+  border-right: 1px solid var(--border) !important;
+}
+
+/* Scrollbars personnalisés pour CodeMirror - WebKit (Chrome, Safari, Edge) */
+.cm-scroller::-webkit-scrollbar {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.cm-scroller::-webkit-scrollbar-track {
+  background: #f1f5f9 !important;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 5px !important;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
+
+/* Firefox scrollbar */
+.cm-scroller {
+  scrollbar-width: thin !important;
+  scrollbar-color: #cbd5e1 #f1f5f9 !important;
+}
+
+/* ...existing code... */
+
+/* Footer - Output */
+.output-section {
+  display: flex;
+  flex-direction: column;
+  height: 200px;
+  padding: 16px;
+  background: #f9fafb;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.output-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.output-box {
+  flex: 1;
+  margin: 0;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-y: auto;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .main-container {
+    flex-direction: column;
+  }
+
+  .right-section {
+    flex: 0 0 200px;
+  }
+
+  .output-section {
+    height: 150px;
+  }
+}

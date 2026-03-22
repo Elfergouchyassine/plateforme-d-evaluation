@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Connexion - Plateforme PDRP</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }
+        .card { background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 350px; text-align: center; }
+        input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #ddd; box-sizing: border-box; font-size: 14px; }
+        button { background: #2563eb; color: white; border: none; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+        button:hover { background: #1d4ed8; }
+        .toggle-link { color: #2563eb; cursor: pointer; font-size: 0.85em; text-decoration: underline; display: block; margin-top: 15px; }
+        #msg { font-size: 0.9em; margin-top: 10px; min-height: 1.2em; font-weight: 500; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2 id="title">Connexion</h2>
+        <form id="authForm">
+            <input type="email" id="email" placeholder="Email" required>
+            <input type="password" id="password" placeholder="Mot de passe" required>
+            
+            <button type="submit" id="btnSubmit">Se connecter</button>
+        </form>
+        <p id="msg"></p>
+        <span id="toggleAuth" class="toggle-link">Pas de compte ? S'inscrire</span>
+    </div>
+
+    <script>
+        let isLogin = true;
+        const authForm = document.getElementById('authForm');
+        const title = document.getElementById('title');
+        const btnSubmit = document.getElementById('btnSubmit');
+        const toggleAuth = document.getElementById('toggleAuth');
+        const msg = document.getElementById('msg');
+
+        // Basculer entre Connexion et Inscription
+        toggleAuth.onclick = () => {
+            isLogin = !isLogin;
+            title.innerText = isLogin ? "Connexion" : "Inscription";
+            btnSubmit.innerText = isLogin ? "Se connecter" : "S'inscrire";
+            toggleAuth.innerText = isLogin ? "Pas de compte ? S'inscrire" : "Déjà un compte ? Se connecter";
+            msg.innerText = "";
+        };
+
+        authForm.onsubmit = async (e) => {
+            e.preventDefault();
+            msg.style.color = "#2563eb";
+            msg.innerText = "Traitement en cours...";
+
+            const payload = {
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value
+            };
+
+            const endpoint = isLogin ? '/api/login' : '/api/register';
+
+            try {
+                const res = await fetch(`http://localhost:5000${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    if (isLogin) {
+                        // Nettoyage avant redirection
+                        localStorage.clear(); 
+                        
+                        const token = data.token;
+                        const role = data.user.role;
+
+                        msg.style.color = "#059669";
+                        msg.innerText = "Authentification réussie ! Transfert...";
+
+                        // REDIRECTION VERS LE NOUVEAU PORT 5175
+                        setTimeout(() => {
+                            window.location.href = `http://localhost:5173?token=${token}&role=${role}`;
+                        }, 400);
+
+                    } else {
+                        alert("Compte créé avec succès ! Connectez-vous.");
+                        isLogin = true;
+                        toggleAuth.click();
+                    }
+                } else {
+                    msg.style.color = "#dc2626";
+                    msg.innerText = data.error || "Erreur d'identification";
+                }
+
+            } catch (err) {
+                // Bloc catch indispensable pour éviter la SyntaxError
+                console.error("Erreur Fetch:", err);
+                msg.style.color = "#dc2626";
+                msg.innerText = "Serveur Backend (5000) non joignable";
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "missing_paren": {
+    "title": "Parenthèse fermante manquante",
+    "explanation": "Une parenthèse ouvrante '(' n'a pas de correspondante ')'. Cela provoque une erreur de syntaxe.",
+    "example": "console.log('hello'",
+    "fix": "Ajouter la parenthèse fermante: console.log('hello')",
+    "resources": ["https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Errors/Unexpected_token"]
+  },
+  "syntax_error": {
+    "title": "Erreur de syntaxe",
+    "explanation": "Votre code contient une erreur de syntaxe détectée par SonarQube.",
+    "example": "console.log('hello'",
+    "fix": "Vérifiez les parenthèses, guillemets et points-virgules manquants."
+  },
+  "undefined_variable": {
+    "title": "Variable non définie",
+    "explanation": "Vous utilisez une variable qui n'a pas été déclarée.",
+    "example": "console.log(x);  // x n'existe pas",
+    "fix": "Déclarez la variable avant de l'utiliser: let x = 10;"
+  },
+  "security_issue": {
+    "title": "⚠️ Problème de sécurité",
+    "explanation": "SonarQube a détecté une faille de sécurité potentielle.",
+    "example": "eval(userInput);  // dangereux!",
+    "fix": "Évitez les fonctions dangereuses comme eval(), innerHTML, etc."
+  },
+  "code_quality": {
+    "title": "💭 Qualité du code",
+    "explanation": "Le code peut être amélioré pour meilleure lisibilité.",
+    "example": "var x=1+2+3;",
+    "fix": "Améliorer la lisibilité: const sum = 1 + 2 + 3;"
+  }
+}

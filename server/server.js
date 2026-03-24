@@ -207,6 +207,88 @@ async function getSonarQubeMeasures(projectKey) {
   } catch (err) { return []; }
 }
 
+// ================= SONARQUBE DETAIL ROUTES =================
+
+// Returns enriched issues with rule details (why + location) for a project
+app.get("/api/sonar/issues/:projectKey", async (req, res) => {
+  if (!sonarEnabled) return res.status(503).json({ error: "SonarQube non configuré" });
+  try {
+    const { projectKey } = req.params;
+    // 1. Fetch issues
+    const issuesRes = await axios.get(
+      `${SONARQUBE_URL}/api/issues/search?projectKeys=${projectKey}&ps=50`,
+      { auth: { username: SONARQUBE_TOKEN, password: "" }, timeout: 10000 }
+    );
+    const issues = issuesRes.data.issues || [];
+
+    // 2. Enrich each issue with rule details (why is this an issue?)
+    const enriched = await Promise.all(issues.map(async (issue) => {
+      try {
+        const ruleRes = await axios.get(
+          `${SONARQUBE_URL}/api/rules/show?key=${issue.rule}`,
+          { auth: { username: SONARQUBE_TOKEN, password: "" }, timeout: 8000 }
+        );
+        const rule = ruleRes.data.rule || {};
+        return {
+          key: issue.key,
+          rule: issue.rule,
+          severity: issue.severity,
+          type: issue.type,
+          message: issue.message,
+          // WHERE
+          component: issue.component,
+          line: issue.line,
+          textRange: issue.textRange,
+          // WHY
+          ruleName: rule.name,
+          ruleDesc: rule.htmlDesc || rule.mdDesc || "",
+          tags: issue.tags || [],
+          effort: issue.effort,
+          status: issue.status,
+        };
+      } catch {
+        return {
+          key: issue.key,
+          rule: issue.rule,
+          severity: issue.severity,
+          type: issue.type,
+          message: issue.message,
+          component: issue.component,
+          line: issue.line,
+          textRange: issue.textRange,
+          ruleName: issue.rule,
+          ruleDesc: "",
+          tags: issue.tags || [],
+          effort: issue.effort,
+          status: issue.status,
+        };
+      }
+    }));
+
+    res.json({ success: true, issues: enriched });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Returns source lines with highlighting for a component
+app.get("/api/sonar/source/:projectKey", async (req, res) => {
+  if (!sonarEnabled) return res.status(503).json({ error: "SonarQube non configuré" });
+  try {
+    const { projectKey } = req.params;
+    const component = req.query.component;
+    if (!component) return res.status(400).json({ error: "component requis" });
+
+    const r = await axios.get(
+      `${SONARQUBE_URL}/api/sources/lines?key=${component}`,
+      { auth: { username: SONARQUBE_TOKEN, password: "" }, timeout: 8000 }
+    );
+    res.json({ success: true, sources: r.data.sources || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ================= HEALTH CHECK =================
 app.get("/health", (req, res) => {
   res.json({

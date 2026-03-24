@@ -3,7 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { linter, lintGutter } from "@codemirror/lint";
-import { vscodeDark } from "@uiw/codemirror-theme-vscode"; // Ajout du thème pour un meilleur design
+import { vscodeDark } from "@uiw/codemirror-theme-vscode"; 
 import "./App.css";
 import { parseSonarQubeReport, mapDiagnosticsToContent } from "./utils/education";
 
@@ -47,7 +47,6 @@ function StudentView({ exercises, isPreview = false, onBack }) {
     if (exercises.length > 0) setSelectedExercise(exercises[0]);
   }, [exercises]);
 
-  // Extensions du langage
   const languageExtension = lang === "python" ? [python()] : [javascript({ jsx: true })];
 
   async function sendToJudge0() {
@@ -117,7 +116,7 @@ function StudentView({ exercises, isPreview = false, onBack }) {
               <>
                 <h2>{selectedExercise.title}</h2>
                 <p>{selectedExercise.description}</p>
-                <small>Difficulté: {selectedExercise.difficulty} | Prof: {selectedExercise.teacherName}</small>
+                <small>Difficulté: {selectedExercise.difficulty} | Langage: {selectedExercise.language} | Prof: {selectedExercise.teacherName}</small>
               </>
             ) : <p>Aucun exercice chargé.</p>}
           </div>
@@ -161,7 +160,6 @@ function TeacherView({ exercises, fetchExercises }) {
     fetchExercises();
   }
 
-  // Si le prof veut voir l'aperçu étudiant
   if (viewMode === "preview") {
     return <StudentView exercises={exercises} isPreview={true} onBack={() => setViewMode("manage")} />;
   }
@@ -179,29 +177,52 @@ function TeacherView({ exercises, fetchExercises }) {
       </header>
 
       <main style={{ display: "flex", gap: 24, padding: 24 }}>
-        {/* Formulaire de création */}
         <div style={{ flex: 1, background: "#fff", padding: 24, borderRadius: 8, boxShadow: "0 2px 8px rgba(0,0,0,.1)" }}>
           <h2>{editId ? "✏️ Modifier" : "➕ Créer un exercice"}</h2>
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <input placeholder="Titre *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
+            
+            {/* AJOUT : Langage */}
+            <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value })} required>
+              <option value="javascript">JavaScript</option>
+              <option value="python">Python</option>
+            </select>
+
+            {/* AJOUT : Difficulté */}
+            <select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })} required>
+              <option value="Facile">Facile</option>
+              <option value="Moyen">Moyen</option>
+              <option value="Difficile">Difficile</option>
+            </select>
+
             <textarea placeholder="Description *" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={4} required />
             <input placeholder="Votre nom *" value={form.teacherName} onChange={e => setForm({ ...form, teacherName: e.target.value })} required />
+            
             <button type="submit" style={{ background: "#2563eb", color: "white", padding: 12, border: "none", borderRadius: 6, cursor: "pointer" }}>
               {editId ? "Mettre à jour" : "Publier"}
             </button>
           </form>
         </div>
 
-        {/* Liste des exercices */}
         <div style={{ flex: 2 }}>
           <h2>📋 Mes Exercices ({exercises.length})</h2>
           {exercises.map(ex => (
             <div key={ex._id} style={{ background: "#fff", padding: 16, marginBottom: 12, borderRadius: 8, boxShadow: "0 2px 6px rgba(0,0,0,.08)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <strong>{ex.title}</strong>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <strong style={{fontSize: "1.1em"}}>{ex.title}</strong>
                 <div>
-                  <button onClick={() => {setEditId(ex._id); setForm(ex);}} style={{background: 'orange', border: 'none', color: 'white', marginRight: '5px'}}>✏️</button>
-                  <button onClick={() => handleDelete(ex._id)} style={{background: 'red', border: 'none', color: 'white'}}>🗑️</button>
+                  <button onClick={() => {setEditId(ex._id); setForm(ex);}} style={{background: 'orange', border: 'none', color: 'white', marginRight: '5px', padding: "5px", cursor: "pointer"}}>✏️</button>
+                  <button onClick={() => handleDelete(ex._id)} style={{background: 'red', border: 'none', color: 'white', padding: "5px", cursor: "pointer"}}>🗑️</button>
+                </div>
+              </div>
+              
+              {/* AFFICHAGE : Contenu et Professeur */}
+              <div style={{fontSize: "0.9em", color: "#444", borderTop: "1px solid #eee", paddingTop: "8px"}}>
+                <p style={{margin: "0 0 8px 0"}}>{ex.description}</p>
+                <div style={{display: "flex", gap: "15px", color: "#888", fontSize: "0.85em"}}>
+                    <span><strong>Difficulté:</strong> {ex.difficulty}</span>
+                    <span><strong>Langage:</strong> {ex.language}</span>
+                    <span><strong>Professeur:</strong> {ex.teacherName}</span>
                 </div>
               </div>
             </div>

@@ -68,7 +68,7 @@ services:
     environment:
       - SONARQUBE_URL=http://sonarqube:9000
       - SONARQUBE_TOKEN=${SONARQUBE_TOKEN:-placeholder}
-      - MONGO_URI=mongodb://mongodb:27017/pdrp_database
+      - MONGO_URI=mongodb+srv://marzeug1husa_db_user:Mohamed1234@cluster0.ststfhv.mongodb.net/pdrp_database?appName=Cluster0
       - NODE_ENV=production
     volumes:
       - ./server/temp_code:/app/temp_code

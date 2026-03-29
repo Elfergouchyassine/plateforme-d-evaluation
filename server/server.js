@@ -19,6 +19,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TEMP_DIR = path.join(__dirname, "temp_code");
 
+// ================= CONFIG CODE-RUNNER =================
+const CODE_RUNNER_URL = process.env.CODE_RUNNER_URL || "http://localhost:4000";
+
 // ================= CONFIG SONARQUBE =================
 const SONARQUBE_URL = process.env.SONARQUBE_URL || "http://localhost:9000";
 const SONARQUBE_TOKEN = process.env.SONARQUBE_TOKEN;
@@ -55,6 +58,7 @@ const exerciseSchema = new mongoose.Schema({
   difficulty:  { type: String, default: "Moyen" },
   classCode:   { type: String, default: "public" },
   teacherName: { type: String, required: true },
+  testCode:    { type: String, default: "" },
   createdAt:   { type: Date, default: Date.now }
 });
 const Exercise = mongoose.model("Exercise", exerciseSchema);
@@ -112,41 +116,91 @@ app.delete("/api/exercises/:id", async (req, res) => {
 });
 
 // ================= SONARQUBE ROUTES =================
+
+// Reusable analysis function — called by /analyze and /api/submit
+async function performSonarAnalysis(code, language) {
+  if (!sonarEnabled) throw new Error("SonarQube non configuré. Ajoutez SONARQUBE_TOKEN dans .env");
+
+  const fileExtension = language === "python" ? "py" : "js";
+  const projectKey = `local-project-${language}`;
+  const filePath = path.join(TEMP_DIR, `code_${Date.now()}.${fileExtension}`);
+  fs.writeFileSync(filePath, code);
+
+  await createSonarQubeProject(projectKey);
+  await runSonarScanner(projectKey, filePath, fileExtension);
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
+  const issues = await getSonarQubeIssues(projectKey);
+  const measures = await getSonarQubeMeasures(projectKey);
+
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+  return {
+    success: true, projectKey, issues, measures,
+    stats: {
+      total: issues.length,
+      bugs: issues.filter(i => i.type === "BUG").length,
+      vulnerabilities: issues.filter(i => i.type === "VULNERABILITY").length,
+      codeSmells: issues.filter(i => i.type === "CODE_SMELL").length,
+    },
+  };
+}
+
 app.post("/analyze", async (req, res) => {
-  if (!sonarEnabled) {
-    return res.status(503).json({ success: false, error: "SonarQube non configuré. Ajoutez SONARQUBE_TOKEN dans .env" });
-  }
   const { code, language } = req.body;
   if (!code || !language) return res.status(400).json({ error: "Code et langage requis" });
-
   try {
-    const fileExtension = language === "python" ? "py" : "js";
-    const projectKey = `local-project-${language}`;
-    const filePath = path.join(TEMP_DIR, `code_${Date.now()}.${fileExtension}`);
-    fs.writeFileSync(filePath, code);
-
-    await createSonarQubeProject(projectKey);
-    await runSonarScanner(projectKey, filePath, fileExtension);
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    const issues = await getSonarQubeIssues(projectKey);
-    const measures = await getSonarQubeMeasures(projectKey);
-
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-    res.json({
-      success: true, projectKey, issues, measures,
-      stats: {
-        total: issues.length,
-        bugs: issues.filter(i => i.type === "BUG").length,
-        vulnerabilities: issues.filter(i => i.type === "VULNERABILITY").length,
-        codeSmells: issues.filter(i => i.type === "CODE_SMELL").length,
-      },
-    });
+    const result = await performSonarAnalysis(code, language);
+    res.json(result);
   } catch (err) {
     console.error("Analyse error:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ================= CODE RUNNER ROUTES =================
+
+// POST /api/run-tests — test student code against exercise's test suite
+app.post("/api/run-tests", async (req, res) => {
+  const { exerciseId, studentCode, language } = req.body;
+  if (!exerciseId || !studentCode) {
+    return res.status(400).json({ error: "exerciseId et studentCode requis" });
+  }
+  try {
+    const exercise = await Exercise.findById(exerciseId);
+    if (!exercise) return res.status(404).json({ error: "Exercice introuvable" });
+    if (!exercise.testCode) return res.status(400).json({ error: "Cet exercice n'a pas de tests définis" });
+
+    const r = await axios.post(`${CODE_RUNNER_URL}/test`, {
+      studentCode,
+      testCode: exercise.testCode,
+      language: language || exercise.language,
+    }, { timeout: 25000 });
+
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, tests: [], passed: 0, total: 0, failed: 0 });
+  }
+});
+
+// POST /api/submit — final submission: execute code + SonarQube analysis in parallel
+app.post("/api/submit", async (req, res) => {
+  const { studentCode, language } = req.body;
+  if (!studentCode || !language) return res.status(400).json({ error: "studentCode et language requis" });
+
+  const [execResult, sonarResult] = await Promise.allSettled([
+    axios.post(`${CODE_RUNNER_URL}/execute`, { code: studentCode, language }, { timeout: 15000 }),
+    performSonarAnalysis(studentCode, language),
+  ]);
+
+  res.json({
+    execution: execResult.status === "fulfilled"
+      ? execResult.value.data
+      : { stdout: "", stderr: execResult.reason.message },
+    sonar: sonarResult.status === "fulfilled"
+      ? sonarResult.value
+      : { success: false, error: sonarResult.reason.message },
+  });
 });
 
 async function createSonarQubeProject(projectKey) {

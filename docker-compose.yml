@@ -57,6 +57,22 @@ services:
       retries: 5
       start_period: 20s
 
+  # Code Runner — executes student code and runs unit tests (replaces Judge0)
+  code-runner:
+    build:
+      context: ./code-runner
+      dockerfile: Dockerfile
+    container_name: code-runner
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   # Backend — only waits for MongoDB, NOT SonarQube (SonarQube is too slow)
   backend:
     build:
@@ -69,6 +85,7 @@ services:
       - SONARQUBE_URL=http://sonarqube:9000
       - SONARQUBE_TOKEN=${SONARQUBE_TOKEN:-placeholder}
       - MONGO_URI=mongodb://mongodb:27017/pdrp_database
+      - CODE_RUNNER_URL=http://code-runner:4000
       - NODE_ENV=production
     volumes:
       - ./server/temp_code:/app/temp_code
@@ -76,6 +93,7 @@ services:
       - app-network
     depends_on:
       - mongodb
+      - code-runner
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]

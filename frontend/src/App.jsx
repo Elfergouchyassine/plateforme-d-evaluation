@@ -332,6 +332,66 @@ function SonarReportPanel({ projectKey }) {
   );
 }
 
+function TestResultsPanel({ results }) {
+  if (!results) return null;
+  const { tests = [], passed, total, failed, error } = results;
+
+  if (error && tests.length === 0) {
+    return (
+      <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: 16, marginTop: 12 }}>
+        <strong style={{ color: "#dc2626" }}>Erreur d'exécution des tests :</strong>
+        <pre style={{ marginTop: 8, fontSize: 12, overflow: "auto", whiteSpace: "pre-wrap", color: "#dc2626" }}>{error}</pre>
+      </div>
+    );
+  }
+
+  const allPassed = total > 0 && passed === total;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+        background: allPassed ? "#f0fdf4" : "#fef2f2",
+        border: `1px solid ${allPassed ? "#bbf7d0" : "#fecaca"}`,
+        borderRadius: 10, marginBottom: 10
+      }}>
+        <span style={{ fontSize: 24 }}>{allPassed ? "🎉" : "⚠️"}</span>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: allPassed ? "#166534" : "#dc2626" }}>
+            {passed}/{total} tests passés
+          </div>
+          {!allPassed && failed > 0 && (
+            <div style={{ fontSize: 12, color: "#6b7280" }}>{failed} test(s) échoué(s)</div>
+          )}
+        </div>
+      </div>
+
+      {tests.map((t, i) => (
+        <div key={i} style={{
+          background: "#fff",
+          border: `1px solid ${t.passed ? "#bbf7d0" : "#fecaca"}`,
+          borderLeft: `4px solid ${t.passed ? "#22c55e" : "#ef4444"}`,
+          borderRadius: 8, padding: "10px 14px", marginBottom: 8
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>{t.passed ? "✅" : "❌"}</span>
+            <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{t.name}</span>
+            {t.duration != null && (
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>{t.duration}ms</span>
+            )}
+          </div>
+          {!t.passed && t.error && (
+            <pre style={{
+              marginTop: 8, padding: 8, background: "#fef2f2", borderRadius: 6,
+              fontSize: 11, color: "#dc2626", overflow: "auto", whiteSpace: "pre-wrap"
+            }}>{t.error}</pre>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StudentView({ exercises, isPreview = false, onBack }) {
   const [value, setValue] = useState(`// Écrivez votre code ici\nconsole.log("Hello!");`);
   const [lang, setLang] = useState("javascript");
@@ -340,46 +400,72 @@ function StudentView({ exercises, isPreview = false, onBack }) {
   const [sonarResults, setSonarResults] = useState(null);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResults, setTestResults] = useState(null);
   const [activeReportTab, setActiveReportTab] = useState("report");
 
   useEffect(() => {
-    if (exercises.length > 0) setSelectedExercise(exercises[0]);
+    if (exercises.length > 0) {
+      setSelectedExercise(exercises[0]);
+      if (exercises[0]?.language) setLang(exercises[0].language);
+    }
   }, [exercises]);
 
   const languageExtension = lang === "python" ? [python()] : [javascript({ jsx: true })];
 
-  async function sendToJudge0() {
-    setLoading(true);
-    setOutput("Exécution en cours...");
+  function handleExerciseChange(e) {
+    const ex = exercises.find(ex => ex._id === e.target.value);
+    setSelectedExercise(ex);
+    setTestResults(null);
     setSonarResults(null);
+    setOutput("");
+    if (ex?.language) setLang(ex.language);
+  }
+
+  async function handleRunTests() {
+    if (!selectedExercise) return;
+    setTestLoading(true);
+    setTestResults(null);
     try {
-      const response = await fetch("https://ce.judge0.com/submissions?base64_encoded=false&wait=true", {
+      const response = await fetch(`${API_URL}/api/run-tests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_code: value, language_id: lang === "javascript" ? 63 : 71 }),
+        body: JSON.stringify({ exerciseId: selectedExercise._id, studentCode: value, language: lang }),
       });
       const result = await response.json();
-      setOutput(result.stdout || result.stderr || "Erreur d'exécution");
-      await analyzeSonarQube();
+      setTestResults(result);
     } catch (err) {
-      setOutput("Erreur Judge0");
+      setTestResults({ success: false, error: err.message, tests: [], passed: 0, total: 0, failed: 0 });
+    } finally {
+      setTestLoading(false);
+    }
+  }
+
+  async function handleSubmit() {
+    setLoading(true);
+    setOutput("Soumission en cours...");
+    setSonarResults(null);
+    try {
+      const response = await fetch(`${API_URL}/api/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentCode: value, language: lang }),
+      });
+      const result = await response.json();
+      const { execution, sonar } = result;
+      if (execution) setOutput(execution.stdout || execution.stderr || "Pas de sortie");
+      if (sonar?.success) {
+        setSonarResults(sonar);
+        setEduContent(mapDiagnosticsToContent(parseSonarQubeReport(sonar)));
+      }
+    } catch (err) {
+      setOutput("Erreur lors de la soumission");
     } finally {
       setLoading(false);
     }
   }
 
-  async function analyzeSonarQube() {
-    try {
-      const response = await fetch(`${API_URL}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: value, language: lang }),
-      });
-      const result = await response.json();
-      setSonarResults(result);
-      setEduContent(mapDiagnosticsToContent(parseSonarQubeReport(result)));
-    } catch (err) { console.error(err); }
-  }
+  const hasTests = Boolean(selectedExercise?.testCode);
 
   return (
     <div className="app-container">
@@ -393,8 +479,17 @@ function StudentView({ exercises, isPreview = false, onBack }) {
             <option value="javascript">JavaScript</option>
             <option value="python">Python</option>
           </select>
-          <button className="btn-execute" onClick={sendToJudge0} disabled={loading}>
-            {loading ? "⏳ Analyse..." : "▶ Exécuter & Analyser"}
+          {hasTests && (
+            <button
+              onClick={handleRunTests}
+              disabled={testLoading || loading}
+              style={{ background: "#10b981", color: "white", border: "none", padding: "8px 16px", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}
+            >
+              {testLoading ? "⏳ Tests..." : "🧪 Tester mon code"}
+            </button>
+          )}
+          <button className="btn-execute" onClick={handleSubmit} disabled={loading || testLoading}>
+            {loading ? "⏳ Soumission..." : "📤 Soumettre"}
           </button>
           {!isPreview && <button className="btn-logout" onClick={logout}>🚪 Déconnexion</button>}
         </div>
@@ -405,7 +500,7 @@ function StudentView({ exercises, isPreview = false, onBack }) {
           {exercises.length > 0 && (
             <div className="exercise-selector">
               <label>Choisir un exercice :
-                <select onChange={(e) => setSelectedExercise(exercises.find(ex => ex._id === e.target.value))}>
+                <select onChange={handleExerciseChange}>
                   {exercises.map(ex => <option key={ex._id} value={ex._id}>{ex.title}</option>)}
                 </select>
               </label>
@@ -426,6 +521,8 @@ function StudentView({ exercises, isPreview = false, onBack }) {
               </>
             ) : <p>Aucun exercice chargé.</p>}
           </div>
+
+          {testResults && <TestResultsPanel results={testResults} />}
 
           <footer className="output-section">
             <h3>Console</h3>
@@ -471,9 +568,20 @@ function StudentView({ exercises, isPreview = false, onBack }) {
   );
 }
 
+const JS_TEST_PLACEHOLDER = `const { solution } = require('./solution');
+
+test('example: solution(2, 3) returns 5', () => {
+  expect(solution(2, 3)).toBe(5);
+});`;
+
+const PY_TEST_PLACEHOLDER = `from solution import solution
+
+def test_example():
+    assert solution(2, 3) == 5`;
+
 function TeacherView({ exercises, fetchExercises }) {
   const [viewMode, setViewMode] = useState("manage");
-  const [form, setForm] = useState({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "public", teacherName: "" });
+  const [form, setForm] = useState({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "public", teacherName: "", testCode: "" });
   const [editId, setEditId] = useState(null);
   const [msg, setMsg] = useState("");
 
@@ -484,7 +592,7 @@ function TeacherView({ exercises, fetchExercises }) {
     await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
     setMsg("✅ Succès !");
     setEditId(null);
-    setForm({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "public", teacherName: "" });
+    setForm({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "public", teacherName: "", testCode: "" });
     fetchExercises();
   }
 
@@ -495,6 +603,9 @@ function TeacherView({ exercises, fetchExercises }) {
   }
 
   if (viewMode === "preview") return <StudentView exercises={exercises} isPreview={true} onBack={() => setViewMode("manage")} />;
+
+  const testPlaceholder = form.language === "python" ? PY_TEST_PLACEHOLDER : JS_TEST_PLACEHOLDER;
+  const testExtension = form.language === "python" ? [python()] : [javascript({ jsx: true })];
 
   return (
     <div className="teacher-container">
@@ -514,6 +625,31 @@ function TeacherView({ exercises, fetchExercises }) {
             <input placeholder="Titre *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
             <textarea placeholder="Description *" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={4} required />
             <input placeholder="Votre nom *" value={form.teacherName} onChange={e => setForm({ ...form, teacherName: e.target.value })} required />
+            <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value, testCode: "" })}>
+              <option value="javascript">JavaScript</option>
+              <option value="python">Python</option>
+            </select>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6, display: "block" }}>
+                Tests unitaires ({form.language === "python" ? "pytest" : "Jest"})
+                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>— optionnel</span>
+              </label>
+              <div style={{ border: "1px solid #d1d5db", borderRadius: 6, overflow: "hidden" }}>
+                <CodeMirror
+                  value={form.testCode}
+                  height="180px"
+                  theme={vscodeDark}
+                  extensions={testExtension}
+                  placeholder={testPlaceholder}
+                  onChange={(val) => setForm({ ...form, testCode: val })}
+                />
+              </div>
+              <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                {form.language === "python"
+                  ? "Le code étudiant est importé depuis solution.py — utilisez : from solution import ma_fonction"
+                  : "Le code étudiant est importé depuis solution.js — utilisez : const { maFonction } = require('./solution')"}
+              </p>
+            </div>
             <button type="submit" style={{ background: "#2563eb", color: "white", padding: 12, border: "none", borderRadius: 6, cursor: "pointer" }}>
               {editId ? "Mettre à jour" : "Publier"}
             </button>
@@ -524,11 +660,15 @@ function TeacherView({ exercises, fetchExercises }) {
           <h2>📋 Mes Exercices ({exercises.length})</h2>
           {exercises.map(ex => (
             <div key={ex._id} style={{ background: "#fff", padding: 16, marginBottom: 12, borderRadius: 8, boxShadow: "0 2px 6px rgba(0,0,0,.08)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <strong>{ex.title}</strong>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <button onClick={() => { setEditId(ex._id); setForm(ex); }} style={{ background: "orange", border: "none", color: "white", marginRight: "5px" }}>✏️</button>
-                  <button onClick={() => handleDelete(ex._id)} style={{ background: "red", border: "none", color: "white" }}>🗑️</button>
+                  <strong>{ex.title}</strong>
+                  <span style={{ marginLeft: 8, fontSize: 11, color: "#6b7280" }}>{ex.language}</span>
+                  {ex.testCode && <span style={{ marginLeft: 8, fontSize: 11, background: "#dcfce7", color: "#166534", padding: "1px 6px", borderRadius: 4 }}>🧪 Tests</span>}
+                </div>
+                <div>
+                  <button onClick={() => { setEditId(ex._id); setForm({ ...ex, testCode: ex.testCode || "" }); }} style={{ background: "orange", border: "none", color: "white", marginRight: "5px", padding: "4px 8px", borderRadius: 4, cursor: "pointer" }}>✏️</button>
+                  <button onClick={() => handleDelete(ex._id)} style={{ background: "red", border: "none", color: "white", padding: "4px 8px", borderRadius: 4, cursor: "pointer" }}>🗑️</button>
                 </div>
               </div>
             </div>

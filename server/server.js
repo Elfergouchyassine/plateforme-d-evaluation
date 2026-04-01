@@ -246,11 +246,13 @@ app.post("/api/submit", async (req, res) => {
   const sonarData = sonarResult.status === "fulfilled" ? sonarResult.value : null;
   const testData  = testResult?.status === "fulfilled"  ? testResult.value.data : null;
 
-  const ratingMap = { "1": 10, "2": 8, "3": 6, "4": 4, "5": 2 };
+  const ratingMap       = { "1": 10, "2": 8, "3": 6, "4": 4, "5": 2 };
   const ratingLetterMap = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E" };
-  const sqaleRaw = sonarData?.measures?.find(m => m.metric === "sqale_rating")?.value || "5";
-  const noteSonar = ratingMap[sqaleRaw] ?? 2;
-  const ratingLetter = ratingLetterMap[sqaleRaw] ?? "E";
+  const sqaleRaw = sonarData?.measures?.find(m => m.metric === "sqale_rating")?.value;
+  // SonarQube returns floats like "1.0", "2.0" — round to integer string
+  const sqaleKey = sqaleRaw ? String(Math.round(parseFloat(sqaleRaw))) : "1";
+  const noteSonar    = ratingMap[sqaleKey]       ?? 10;
+  const ratingLetter = ratingLetterMap[sqaleKey] ?? "A";
 
   const hasTests  = Boolean(exercise?.testCode);
   const testsPassés = testData?.passed ?? 0;

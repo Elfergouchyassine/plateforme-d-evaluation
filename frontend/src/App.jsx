@@ -10,14 +10,17 @@ const API_URL = "http://localhost:5000";
 
 function getAuthFromURL() {
   const params = new URLSearchParams(window.location.search);
-  const role = params.get("role");
+  const role  = params.get("role");
+  const email = params.get("email");
   if (role) {
     localStorage.setItem("userRole", role);
     localStorage.setItem("isLoggedIn", "true");
+    if (email) localStorage.setItem("userEmail", decodeURIComponent(email));
     window.history.replaceState({}, "", "/");
   }
   return {
-    role: localStorage.getItem("userRole"),
+    role:      localStorage.getItem("userRole"),
+    email:     localStorage.getItem("userEmail") || "",
     isLoggedIn: localStorage.getItem("isLoggedIn") === "true",
   };
 }
@@ -392,17 +395,70 @@ function TestResultsPanel({ results }) {
   );
 }
 
-function StudentView({ exercises, isPreview = false, onBack }) {
+function GradePanel({ grade }) {
+  if (!grade) return null;
+  const { noteTests, noteSonar, noteFinale, ratingLetter, hasTests } = grade;
+  const color = noteFinale >= 16 ? "#166534" : noteFinale >= 12 ? "#854d0e" : "#dc2626";
+  const bg    = noteFinale >= 16 ? "#f0fdf4"  : noteFinale >= 12 ? "#fefce8"  : "#fef2f2";
+  const border= noteFinale >= 16 ? "#bbf7d0"  : noteFinale >= 12 ? "#fde68a"  : "#fecaca";
+  return (
+    <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "16px 20px", marginTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 28 }}>🎓</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 22, color }}>
+              {noteFinale} <span style={{ fontSize: 14, fontWeight: 500, color: "#6b7280" }}>/ 20</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>Note finale</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 16 }}>
+          {hasTests && noteTests !== null && (
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontWeight: 700, fontSize: 18, color }}>{noteTests}</div>
+              <div style={{ fontSize: 11, color: "#6b7280" }}>Tests /10</div>
+            </div>
+          )}
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontWeight: 700, fontSize: 18, color }}>{noteSonar}</div>
+            <div style={{ fontSize: 11, color: "#6b7280" }}>Qualité /10</div>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{
+              fontWeight: 800, fontSize: 18,
+              background: ratingLetter === "A" ? "#dcfce7" : ratingLetter === "B" ? "#dbeafe" : ratingLetter === "C" ? "#fef9c3" : "#fee2e2",
+              color: ratingLetter === "A" ? "#166534" : ratingLetter === "B" ? "#1d4ed8" : ratingLetter === "C" ? "#854d0e" : "#dc2626",
+              borderRadius: 6, padding: "2px 10px"
+            }}>{ratingLetter}</div>
+            <div style={{ fontSize: 11, color: "#6b7280" }}>Sonar</div>
+          </div>
+        </div>
+      </div>
+      {!hasTests && (
+        <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
+          Aucun test défini pour cet exercice — note qualité × 2
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StudentView({ exercises, studentEmail = "", isPreview = false, onBack }) {
   const [value, setValue] = useState(`// Écrivez votre code ici\nconsole.log("Hello!");`);
   const [lang, setLang] = useState("javascript");
   const [output, setOutput] = useState("");
+  const [execLoading, setExecLoading] = useState(false);
   const [eduContent, setEduContent] = useState([]);
   const [sonarResults, setSonarResults] = useState(null);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [testResults, setTestResults] = useState(null);
+  const [grade, setGrade] = useState(null);
   const [activeReportTab, setActiveReportTab] = useState("report");
+
+  const anyLoading = execLoading || testLoading || loading;
 
   useEffect(() => {
     if (exercises.length > 0) {
@@ -419,7 +475,26 @@ function StudentView({ exercises, isPreview = false, onBack }) {
     setTestResults(null);
     setSonarResults(null);
     setOutput("");
+    setGrade(null);
     if (ex?.language) setLang(ex.language);
+  }
+
+  async function handleExecute() {
+    setExecLoading(true);
+    setOutput("Exécution en cours...");
+    try {
+      const res = await fetch(`${API_URL}/api/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentCode: value, language: lang }),
+      });
+      const data = await res.json();
+      setOutput(data.stdout || data.stderr || "Pas de sortie");
+    } catch {
+      setOutput("Erreur : backend non joignable");
+    } finally {
+      setExecLoading(false);
+    }
   }
 
   async function handleRunTests() {
@@ -427,13 +502,12 @@ function StudentView({ exercises, isPreview = false, onBack }) {
     setTestLoading(true);
     setTestResults(null);
     try {
-      const response = await fetch(`${API_URL}/api/run-tests`, {
+      const res = await fetch(`${API_URL}/api/run-tests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ exerciseId: selectedExercise._id, studentCode: value, language: lang }),
       });
-      const result = await response.json();
-      setTestResults(result);
+      setTestResults(await res.json());
     } catch (err) {
       setTestResults({ success: false, error: err.message, tests: [], passed: 0, total: 0, failed: 0 });
     } finally {
@@ -445,20 +519,27 @@ function StudentView({ exercises, isPreview = false, onBack }) {
     setLoading(true);
     setOutput("Soumission en cours...");
     setSonarResults(null);
+    setGrade(null);
     try {
-      const response = await fetch(`${API_URL}/api/submit`, {
+      const res = await fetch(`${API_URL}/api/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentCode: value, language: lang }),
+        body: JSON.stringify({
+          studentCode: value,
+          language: lang,
+          exerciseId: selectedExercise?._id,
+          studentEmail,
+        }),
       });
-      const result = await response.json();
-      const { execution, sonar } = result;
-      if (execution) setOutput(execution.stdout || execution.stderr || "Pas de sortie");
-      if (sonar?.success) {
-        setSonarResults(sonar);
-        setEduContent(mapDiagnosticsToContent(parseSonarQubeReport(sonar)));
+      const result = await res.json();
+      if (result.execution) setOutput(result.execution.stdout || result.execution.stderr || "Pas de sortie");
+      if (result.sonar?.success) {
+        setSonarResults(result.sonar);
+        setEduContent(mapDiagnosticsToContent(parseSonarQubeReport(result.sonar)));
       }
-    } catch (err) {
+      if (result.tests) setTestResults(result.tests);
+      if (result.grade) setGrade(result.grade);
+    } catch {
       setOutput("Erreur lors de la soumission");
     } finally {
       setLoading(false);
@@ -473,22 +554,23 @@ function StudentView({ exercises, isPreview = false, onBack }) {
         <h1>{isPreview ? "Aperçu : Mode Étudiant" : "Plateforme d'évaluation"}</h1>
         <div className="controls">
           {isPreview && (
-            <button className="btn-back" onClick={onBack} style={{ marginRight: "10px", background: "#6b7280" }}>⬅ Retour Gestion</button>
+            <button onClick={onBack} style={{ marginRight: 10, background: "#6b7280", color: "white", border: "none", padding: "8px 14px", borderRadius: 6, cursor: "pointer" }}>⬅ Retour</button>
           )}
-          <select value={lang} onChange={(e) => setLang(e.target.value)}>
+          <select value={lang} onChange={e => setLang(e.target.value)}>
             <option value="javascript">JavaScript</option>
             <option value="python">Python</option>
           </select>
+          <button onClick={handleExecute} disabled={anyLoading}
+            style={{ background: "#6366f1", color: "white", border: "none", padding: "8px 16px", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}>
+            {execLoading ? "⏳..." : "▶ Exécuter"}
+          </button>
           {hasTests && (
-            <button
-              onClick={handleRunTests}
-              disabled={testLoading || loading}
-              style={{ background: "#10b981", color: "white", border: "none", padding: "8px 16px", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}
-            >
-              {testLoading ? "⏳ Tests..." : "🧪 Tester mon code"}
+            <button onClick={handleRunTests} disabled={anyLoading}
+              style={{ background: "#10b981", color: "white", border: "none", padding: "8px 16px", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}>
+              {testLoading ? "⏳ Tests..." : "🧪 Tester"}
             </button>
           )}
-          <button className="btn-execute" onClick={handleSubmit} disabled={loading || testLoading}>
+          <button className="btn-execute" onClick={handleSubmit} disabled={anyLoading}>
             {loading ? "⏳ Soumission..." : "📤 Soumettre"}
           </button>
           {!isPreview && <button className="btn-logout" onClick={logout}>🚪 Déconnexion</button>}
@@ -507,7 +589,7 @@ function StudentView({ exercises, isPreview = false, onBack }) {
             </div>
           )}
           <div className="editor-section">
-            <CodeMirror value={value} height="400px" theme={vscodeDark} extensions={languageExtension} onChange={(val) => setValue(val)} />
+            <CodeMirror value={value} height="400px" theme={vscodeDark} extensions={languageExtension} onChange={val => setValue(val)} />
           </div>
         </div>
 
@@ -517,11 +599,12 @@ function StudentView({ exercises, isPreview = false, onBack }) {
               <>
                 <h2>{selectedExercise.title}</h2>
                 <p>{selectedExercise.description}</p>
-                <small>Difficulté: {selectedExercise.difficulty} | Prof: {selectedExercise.teacherName}</small>
+                <small>Difficulté : {selectedExercise.difficulty} | Prof : {selectedExercise.teacherName}</small>
               </>
             ) : <p>Aucun exercice chargé.</p>}
           </div>
 
+          {grade && <GradePanel grade={grade} />}
           {testResults && <TestResultsPanel results={testResults} />}
 
           <footer className="output-section">
@@ -537,27 +620,24 @@ function StudentView({ exercises, isPreview = false, onBack }) {
                     padding: "8px 16px", border: "none", cursor: "pointer",
                     background: activeReportTab === t.id ? "#1e293b" : "#f1f5f9",
                     color: activeReportTab === t.id ? "#f8fafc" : "#64748b",
-                    borderRadius: "8px 8px 0 0", fontWeight: 600, fontSize: 12, transition: "all .15s"
+                    borderRadius: "8px 8px 0 0", fontWeight: 600, fontSize: 12,
                   }}>{t.label}</button>
                 ))}
               </div>
-
               {activeReportTab === "report" && sonarResults.projectKey && (
                 <SonarReportPanel projectKey={sonarResults.projectKey} />
               )}
-
               {activeReportTab === "edu" && (
                 <div style={{ padding: 16, background: "#fff", border: "1px solid #e2e8f0", borderRadius: "0 8px 8px 8px" }}>
-                  {eduContent.length === 0 ? (
-                    <p style={{ color: "#64748b", fontSize: 13 }}>Aucun contenu pédagogique disponible pour ces résultats.</p>
-                  ) : (
-                    eduContent.map((item, i) => (
-                      <div key={i} style={{ marginBottom: 12, padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-                        <strong style={{ color: "#1e293b" }}>{item.title || item.key}</strong>
-                        <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>{item.description || item.explanation}</p>
-                      </div>
-                    ))
-                  )}
+                  {eduContent.length === 0
+                    ? <p style={{ color: "#64748b", fontSize: 13 }}>Aucun contenu pédagogique disponible.</p>
+                    : eduContent.map((item, i) => (
+                        <div key={i} style={{ marginBottom: 12, padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
+                          <strong style={{ color: "#1e293b" }}>{item.title || item.key}</strong>
+                          <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>{item.description || item.explanation}</p>
+                        </div>
+                      ))
+                  }
                 </div>
               )}
             </div>
@@ -673,8 +753,91 @@ function TeacherView({ exercises, fetchExercises }) {
               </div>
             </div>
           ))}
+
+          <SubmissionsTable />
         </div>
       </main>
+    </div>
+  );
+}
+
+function SubmissionsTable() {
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/api/submissions`)
+      .then(r => r.json())
+      .then(data => setSubmissions(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const gradeColor = (note) => note >= 16 ? "#166534" : note >= 12 ? "#854d0e" : "#dc2626";
+  const gradeBg    = (note) => note >= 16 ? "#f0fdf4"  : note >= 12 ? "#fefce8"  : "#fef2f2";
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <h2 style={{ margin: 0 }}>📊 Notes des étudiants ({submissions.length})</h2>
+        <button onClick={() => setOpen(o => !o)} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 13 }}>
+          {open ? "Réduire ▲" : "Afficher ▼"}
+        </button>
+      </div>
+
+      {open && (
+        loading ? (
+          <div style={{ color: "#64748b", fontSize: 13 }}>Chargement...</div>
+        ) : submissions.length === 0 ? (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 20, color: "#64748b", fontSize: 13, textAlign: "center" }}>
+            Aucune soumission pour l'instant.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#1e293b", color: "#f8fafc" }}>
+                  {["Étudiant", "Exercice", "Langage", "Tests", "Sonar", "Note /20", "Date"].map(h => (
+                    <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {submissions.map((s, i) => (
+                  <tr key={s._id} style={{ background: i % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <td style={{ padding: "10px 14px", color: "#1e293b" }}>{s.studentEmail}</td>
+                    <td style={{ padding: "10px 14px" }}>{s.exerciseTitle || "—"}</td>
+                    <td style={{ padding: "10px 14px", color: "#6b7280" }}>{s.language}</td>
+                    <td style={{ padding: "10px 14px" }}>
+                      {s.noteTests !== null && s.noteTests !== undefined
+                        ? <span style={{ fontWeight: 600 }}>{s.noteTests}/10 <span style={{ fontSize: 11, color: "#6b7280" }}>({s.testsPassés}/{s.testsTotal})</span></span>
+                        : <span style={{ color: "#9ca3af" }}>—</span>}
+                    </td>
+                    <td style={{ padding: "10px 14px" }}>
+                      <span style={{
+                        fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                        background: s.sonarRating === "A" ? "#dcfce7" : s.sonarRating === "B" ? "#dbeafe" : s.sonarRating === "C" ? "#fef9c3" : "#fee2e2",
+                        color: s.sonarRating === "A" ? "#166534" : s.sonarRating === "B" ? "#1d4ed8" : s.sonarRating === "C" ? "#854d0e" : "#dc2626"
+                      }}>{s.sonarRating || "—"}</span>
+                      <span style={{ marginLeft: 6, fontSize: 11, color: "#6b7280" }}>{s.noteSonar}/10</span>
+                    </td>
+                    <td style={{ padding: "10px 14px" }}>
+                      <span style={{ fontWeight: 800, fontSize: 15, color: gradeColor(s.noteFinale), background: gradeBg(s.noteFinale), padding: "3px 10px", borderRadius: 6 }}>
+                        {s.noteFinale}/20
+                      </span>
+                    </td>
+                    <td style={{ padding: "10px 14px", color: "#6b7280", fontSize: 11 }}>
+                      {new Date(s.submittedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
     </div>
   );
 }
@@ -701,5 +864,5 @@ export default function App() {
   if (!authState) return <div style={{ textAlign: "center", marginTop: 80 }}>Chargement...</div>;
   return authState.role === "teacher"
     ? <TeacherView exercises={exercises} fetchExercises={fetchExercises} />
-    : <StudentView exercises={exercises} />;
+    : <StudentView exercises={exercises} studentEmail={authState.email} />;
 }

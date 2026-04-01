@@ -63,6 +63,23 @@ const exerciseSchema = new mongoose.Schema({
 });
 const Exercise = mongoose.model("Exercise", exerciseSchema);
 
+// ================= SUBMISSION MODEL =================
+const submissionSchema = new mongoose.Schema({
+  studentEmail:    { type: String, required: true },
+  exerciseId:      { type: mongoose.Schema.Types.ObjectId },
+  exerciseTitle:   { type: String },
+  language:        { type: String },
+  noteTests:       { type: Number, default: null },
+  noteSonar:       { type: Number, default: null },
+  noteFinale:      { type: Number, default: null },
+  testsPassés:     { type: Number, default: 0 },
+  testsTotal:      { type: Number, default: 0 },
+  sonarRating:     { type: String, default: null },
+  sonarProjectKey: { type: String },
+  submittedAt:     { type: Date, default: Date.now }
+});
+const Submission = mongoose.model("Submission", submissionSchema);
+
 // ================= AUTH ROUTES =================
 app.post("/api/register", (req, res) => {
   const { email, password, role = "student" } = req.body;
@@ -79,7 +96,7 @@ app.post("/api/login", (req, res) => {
 });
 
 // ================= EXERCISE ROUTES =================
-app.get("/api/exercises", async (req, res) => {
+app.get("/api/exercises", async (_req, res) => {
   try {
     const exercises = await Exercise.find().sort({ createdAt: -1 });
     res.json(exercises);
@@ -118,25 +135,25 @@ app.delete("/api/exercises/:id", async (req, res) => {
 // ================= SONARQUBE ROUTES =================
 
 // Reusable analysis function — called by /analyze and /api/submit
-async function performSonarAnalysis(code, language) {
+async function performSonarAnalysis(code, language, projectKey = null) {
   if (!sonarEnabled) throw new Error("SonarQube non configuré. Ajoutez SONARQUBE_TOKEN dans .env");
 
   const fileExtension = language === "python" ? "py" : "js";
-  const projectKey = `local-project-${language}`;
+  const key = projectKey || `local-project-${language}`;
   const filePath = path.join(TEMP_DIR, `code_${Date.now()}.${fileExtension}`);
   fs.writeFileSync(filePath, code);
 
-  await createSonarQubeProject(projectKey);
-  await runSonarScanner(projectKey, filePath, fileExtension);
+  await createSonarQubeProject(key);
+  await runSonarScanner(key, filePath, fileExtension);
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  const issues = await getSonarQubeIssues(projectKey);
-  const measures = await getSonarQubeMeasures(projectKey);
+  const issues = await getSonarQubeIssues(key);
+  const measures = await getSonarQubeMeasures(key);
 
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
   return {
-    success: true, projectKey, issues, measures,
+    success: true, projectKey: key, issues, measures,
     stats: {
       total: issues.length,
       bugs: issues.filter(i => i.type === "BUG").length,
@@ -159,6 +176,18 @@ app.post("/analyze", async (req, res) => {
 });
 
 // ================= CODE RUNNER ROUTES =================
+
+// POST /api/execute — simple code execution (no tests, no SonarQube)
+app.post("/api/execute", async (req, res) => {
+  const { studentCode, language } = req.body;
+  if (!studentCode || !language) return res.status(400).json({ error: "studentCode et language requis" });
+  try {
+    const r = await axios.post(`${CODE_RUNNER_URL}/execute`, { code: studentCode, language }, { timeout: 15000 });
+    res.json(r.data);
+  } catch (err) {
+    res.json({ stdout: "", stderr: err.message });
+  }
+});
 
 // POST /api/run-tests — test student code against exercise's test suite
 app.post("/api/run-tests", async (req, res) => {
@@ -183,24 +212,95 @@ app.post("/api/run-tests", async (req, res) => {
   }
 });
 
-// POST /api/submit — final submission: execute code + SonarQube analysis in parallel
+// POST /api/submit — final submission: execute + tests + SonarQube + grade
 app.post("/api/submit", async (req, res) => {
-  const { studentCode, language } = req.body;
+  const { studentCode, language, exerciseId, studentEmail } = req.body;
   if (!studentCode || !language) return res.status(400).json({ error: "studentCode et language requis" });
 
-  const [execResult, sonarResult] = await Promise.allSettled([
+  // Build unique SonarQube projectKey per student + exercise
+  const studentSlug = (studentEmail || "anonymous").replace(/[@.]/g, "_");
+  const projectKey = `proj-${studentSlug}-${exerciseId || "noex"}-${language}`;
+
+  // Fetch exercise (for tests + title)
+  let exercise = null;
+  if (exerciseId) {
+    try { exercise = await Exercise.findById(exerciseId); } catch (_) {}
+  }
+
+  // Run execution, tests (if any), and SonarQube in parallel
+  const tasks = [
     axios.post(`${CODE_RUNNER_URL}/execute`, { code: studentCode, language }, { timeout: 15000 }),
-    performSonarAnalysis(studentCode, language),
-  ]);
+    performSonarAnalysis(studentCode, language, projectKey),
+  ];
+  if (exercise?.testCode) {
+    tasks.push(
+      axios.post(`${CODE_RUNNER_URL}/test`, {
+        studentCode, testCode: exercise.testCode, language
+      }, { timeout: 25000 })
+    );
+  }
+
+  const [execResult, sonarResult, testResult] = await Promise.allSettled(tasks);
+
+  // ── Grade calculation ──────────────────────────────────────────────
+  const sonarData = sonarResult.status === "fulfilled" ? sonarResult.value : null;
+  const testData  = testResult?.status === "fulfilled"  ? testResult.value.data : null;
+
+  const ratingMap = { "1": 10, "2": 8, "3": 6, "4": 4, "5": 2 };
+  const ratingLetterMap = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E" };
+  const sqaleRaw = sonarData?.measures?.find(m => m.metric === "sqale_rating")?.value || "5";
+  const noteSonar = ratingMap[sqaleRaw] ?? 2;
+  const ratingLetter = ratingLetterMap[sqaleRaw] ?? "E";
+
+  const hasTests  = Boolean(exercise?.testCode);
+  const testsPassés = testData?.passed ?? 0;
+  const testsTotal  = testData?.total  ?? 0;
+  const noteTests = hasTests && testsTotal > 0
+    ? Math.round((testsPassés / testsTotal) * 10 * 10) / 10
+    : null;
+
+  const noteFinale = noteTests !== null
+    ? Math.round((noteTests + noteSonar) * 10) / 10
+    : Math.round(noteSonar * 2 * 10) / 10;
+
+  // ── Upsert submission ──────────────────────────────────────────────
+  if (studentEmail) {
+    await Submission.findOneAndUpdate(
+      { studentEmail, exerciseId: exerciseId || null },
+      {
+        studentEmail,
+        exerciseId:    exerciseId || null,
+        exerciseTitle: exercise?.title || "—",
+        language,
+        noteTests,
+        noteSonar,
+        noteFinale,
+        testsPassés,
+        testsTotal,
+        sonarRating:     ratingLetter,
+        sonarProjectKey: projectKey,
+        submittedAt:     new Date(),
+      },
+      { upsert: true, new: true }
+    ).catch(err => console.error("Submission save error:", err.message));
+  }
 
   res.json({
     execution: execResult.status === "fulfilled"
       ? execResult.value.data
-      : { stdout: "", stderr: execResult.reason.message },
-    sonar: sonarResult.status === "fulfilled"
-      ? sonarResult.value
-      : { success: false, error: sonarResult.reason.message },
+      : { stdout: "", stderr: execResult.reason?.message || "Erreur d'exécution" },
+    sonar: sonarData || { success: false, error: sonarResult.reason?.message },
+    tests: testData || null,
+    grade: { noteTests, noteSonar, noteFinale, ratingLetter, hasTests },
   });
+});
+
+// GET /api/submissions — all submissions for teacher view
+app.get("/api/submissions", async (_req, res) => {
+  try {
+    const submissions = await Submission.find().sort({ submittedAt: -1 });
+    res.json(submissions);
+  } catch (err) { res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 async function createSonarQubeProject(projectKey) {
@@ -329,7 +429,6 @@ app.get("/api/sonar/issues/:projectKey", async (req, res) => {
 app.get("/api/sonar/source/:projectKey", async (req, res) => {
   if (!sonarEnabled) return res.status(503).json({ error: "SonarQube non configuré" });
   try {
-    const { projectKey } = req.params;
     const component = req.query.component;
     if (!component) return res.status(400).json({ error: "component requis" });
 
@@ -344,7 +443,7 @@ app.get("/api/sonar/source/:projectKey", async (req, res) => {
 });
 
 // ================= HEALTH CHECK =================
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     port: PORT,
@@ -353,7 +452,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get("/sonarqube-status", async (req, res) => {
+app.get("/sonarqube-status", async (_req, res) => {
   if (!sonarEnabled) return res.json({ sonarqube: "disabled" });
   try {
     const r = await axios.get(`${SONARQUBE_URL}/api/system/status`, { timeout: 5000 });

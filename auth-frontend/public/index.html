@@ -77,8 +77,9 @@
                         msg.innerText = "Authentification réussie ! Transfert...";
 
                         // REDIRECTION VERS LE NOUVEAU PORT 5175
+                        const email = document.getElementById('email').value;
                         setTimeout(() => {
-                            window.location.href = `http://localhost:5173?token=${token}&role=${role}`;
+                            window.location.href = `http://localhost:5173?token=${token}&role=${role}&email=${encodeURIComponent(email)}`;
                         }, 400);
 
                     } else {

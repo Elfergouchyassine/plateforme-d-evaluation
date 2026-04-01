@@ -599,7 +599,7 @@ function StudentView({ exercises, studentEmail = "", isPreview = false, onBack }
               <>
                 <h2>{selectedExercise.title}</h2>
                 <p>{selectedExercise.description}</p>
-                <small>Difficulté : {selectedExercise.difficulty} | Prof : {selectedExercise.teacherName}</small>
+                <small>Difficulté: {selectedExercise.difficulty} | Langage: {selectedExercise.language} | Prof: {selectedExercise.teacherName}</small>
               </>
             ) : <p>Aucun exercice chargé.</p>}
           </div>
@@ -703,6 +703,20 @@ function TeacherView({ exercises, fetchExercises }) {
           <h2>{editId ? "✏️ Modifier" : "➕ Créer un exercice"}</h2>
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <input placeholder="Titre *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
+            
+            {/* AJOUT : Langage */}
+            <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value })} required>
+              <option value="javascript">JavaScript</option>
+              <option value="python">Python</option>
+            </select>
+
+            {/* AJOUT : Difficulté */}
+            <select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })} required>
+              <option value="Facile">Facile</option>
+              <option value="Moyen">Moyen</option>
+              <option value="Difficile">Difficile</option>
+            </select>
+
             <textarea placeholder="Description *" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={4} required />
             <input placeholder="Votre nom *" value={form.teacherName} onChange={e => setForm({ ...form, teacherName: e.target.value })} required />
             <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value, testCode: "" })}>

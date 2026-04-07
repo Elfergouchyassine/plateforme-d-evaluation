@@ -221,6 +221,8 @@ function SonarReportPanel({ projectKey }) {
     if (!projectKey) return;
     setLoading(true);
     setError(null);
+    setIssues([]);
+    setSourceLines([]);
     try {
       const res = await fetch(`${API_URL}/api/sonar/issues/${projectKey}`);
       const data = await res.json();
@@ -625,7 +627,7 @@ function StudentView({ exercises, studentEmail = "", isPreview = false, onBack }
                 ))}
               </div>
               {activeReportTab === "report" && sonarResults.projectKey && (
-                <SonarReportPanel projectKey={sonarResults.projectKey} />
+                <SonarReportPanel key={sonarResults.projectKey} projectKey={sonarResults.projectKey} />
               )}
               {activeReportTab === "edu" && (
                 <div style={{ padding: 16, background: "#fff", border: "1px solid #e2e8f0", borderRadius: "0 8px 8px 8px" }}>

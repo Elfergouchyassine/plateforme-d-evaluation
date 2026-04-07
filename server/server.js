@@ -56,7 +56,7 @@ const exerciseSchema = new mongoose.Schema({
   description: { type: String, required: true },
   language:    { type: String, default: "javascript" },
   difficulty:  { type: String, default: "Moyen" },
-  classCode:   { type: String, default: "public" },
+  classCode:   { type: String, default: "" },
   teacherName: { type: String, required: true },
   testCode:    { type: String, default: "" },
   createdAt:   { type: Date, default: Date.now }

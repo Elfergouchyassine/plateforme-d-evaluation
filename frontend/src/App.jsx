@@ -446,6 +446,33 @@ function GradePanel({ grade }) {
   );
 }
 
+function TagBadge({ label, color = "#6b7280" }) {
+  return (
+    <span style={{
+      background: color + "1a", color, border: `1px solid ${color}40`,
+      fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
+      letterSpacing: ".3px", textTransform: "uppercase"
+    }}>{label}</span>
+  );
+}
+
+function FilterPill({ label, options, labels, value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>{label}:</span>
+      {options.map((opt, i) => (
+        <button key={opt} onClick={() => onChange(opt)} style={{
+          padding: "2px 8px", fontSize: 11, borderRadius: 12, cursor: "pointer", fontWeight: 600,
+          border: value === opt ? "1.5px solid #3b82f6" : "1.5px solid #d1d5db",
+          background: value === opt ? "#eff6ff" : "#fff",
+          color: value === opt ? "#1d4ed8" : "#6b7280",
+          transition: "all .12s"
+        }}>{labels[i]}</button>
+      ))}
+    </div>
+  );
+}
+
 function StudentView({ exercises, studentEmail = "", isPreview = false, onBack }) {
   const [value, setValue] = useState(`// Écrivez votre code ici\nconsole.log("Hello!");`);
   const [lang, setLang] = useState("javascript");
@@ -459,8 +486,20 @@ function StudentView({ exercises, studentEmail = "", isPreview = false, onBack }
   const [testResults, setTestResults] = useState(null);
   const [grade, setGrade] = useState(null);
   const [activeReportTab, setActiveReportTab] = useState("report");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterLang, setFilterLang] = useState("");
+  const [filterNiveau, setFilterNiveau] = useState("");
+  const [filterDiff, setFilterDiff] = useState("");
 
   const anyLoading = execLoading || testLoading || loading;
+
+  const filteredExercises = exercises.filter(ex => {
+    const matchSearch = !searchQuery || ex.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchLang   = !filterLang   || ex.language   === filterLang;
+    const matchNiveau = !filterNiveau || ex.classCode   === filterNiveau;
+    const matchDiff   = !filterDiff   || ex.difficulty  === filterDiff;
+    return matchSearch && matchLang && matchNiveau && matchDiff;
+  });
 
   useEffect(() => {
     if (exercises.length > 0) {
@@ -471,8 +510,7 @@ function StudentView({ exercises, studentEmail = "", isPreview = false, onBack }
 
   const languageExtension = lang === "python" ? [python()] : [javascript({ jsx: true })];
 
-  function handleExerciseChange(e) {
-    const ex = exercises.find(ex => ex._id === e.target.value);
+  function selectExercise(ex) {
     setSelectedExercise(ex);
     setTestResults(null);
     setSonarResults(null);
@@ -581,15 +619,76 @@ function StudentView({ exercises, studentEmail = "", isPreview = false, onBack }
 
       <main className="main-container">
         <div className="left-section">
-          {exercises.length > 0 && (
-            <div className="exercise-selector">
-              <label>Choisir un exercice :
-                <select onChange={handleExerciseChange}>
-                  {exercises.map(ex => <option key={ex._id} value={ex._id}>{ex.title}</option>)}
-                </select>
-              </label>
+          {/* ── Exercise Browser ── */}
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
+              📚 Exercices {filteredExercises.length < exercises.length && `(${filteredExercises.length}/${exercises.length})`}
+            </h3>
+
+            {/* Search bar */}
+            <input
+              placeholder="🔍 Rechercher un exercice..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", marginBottom: 10, boxSizing: "border-box", fontSize: 13 }}
+            />
+
+            {/* Filter pills */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+              <FilterPill
+                label="Langage"
+                options={["", "javascript", "python"]}
+                labels={["Tous", "JavaScript", "Python"]}
+                value={filterLang}
+                onChange={setFilterLang}
+              />
+              <FilterPill
+                label="Classe"
+                options={["", "CP1", "CP2", "CI1", "CI2"]}
+                labels={["Toutes", "CP1", "CP2", "CI1", "CI2"]}
+                value={filterNiveau}
+                onChange={setFilterNiveau}
+              />
+              <FilterPill
+                label="Difficulté"
+                options={["", "Facile", "Moyen", "Difficile"]}
+                labels={["Toutes", "Facile", "Moyen", "Difficile"]}
+                value={filterDiff}
+                onChange={setFilterDiff}
+              />
             </div>
-          )}
+
+            {/* Exercise cards */}
+            <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+              {filteredExercises.length === 0 ? (
+                <p style={{ color: "#9ca3af", fontSize: 13, textAlign: "center", margin: "12px 0" }}>Aucun exercice trouvé</p>
+              ) : filteredExercises.map(ex => {
+                const isSelected = selectedExercise?._id === ex._id;
+                const diffColor = ex.difficulty === "Facile" ? "#16a34a" : ex.difficulty === "Difficile" ? "#dc2626" : "#d97706";
+                return (
+                  <div
+                    key={ex._id}
+                    onClick={() => selectExercise(ex)}
+                    style={{
+                      padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                      background: isSelected ? "#eff6ff" : "#fff",
+                      border: `1.5px solid ${isSelected ? "#3b82f6" : "#e2e8f0"}`,
+                      transition: "all .12s"
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: 13, color: "#1e293b", marginBottom: 5 }}>{ex.title}</div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      <TagBadge label={ex.language === "python" ? "Python" : "JavaScript"} color="#6366f1" />
+                      {ex.classCode && ex.classCode !== "public" && <TagBadge label={ex.classCode} color="#0891b2" />}
+                      <TagBadge label={ex.difficulty} color={diffColor} />
+                      {ex.testCode && <TagBadge label="Tests" color="#10b981" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="editor-section">
             <CodeMirror value={value} height="400px" theme={vscodeDark} extensions={languageExtension} onChange={val => setValue(val)} />
           </div>
@@ -663,7 +762,7 @@ def test_example():
 
 function TeacherView({ exercises, fetchExercises }) {
   const [viewMode, setViewMode] = useState("manage");
-  const [form, setForm] = useState({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "public", teacherName: "", testCode: "" });
+  const [form, setForm] = useState({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "", teacherName: "", testCode: "" });
   const [editId, setEditId] = useState(null);
   const [msg, setMsg] = useState("");
 
@@ -674,7 +773,7 @@ function TeacherView({ exercises, fetchExercises }) {
     await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
     setMsg("✅ Succès !");
     setEditId(null);
-    setForm({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "public", teacherName: "", testCode: "" });
+    setForm({ title: "", description: "", language: "javascript", difficulty: "Moyen", classCode: "", teacherName: "", testCode: "" });
     fetchExercises();
   }
 
@@ -705,26 +804,37 @@ function TeacherView({ exercises, fetchExercises }) {
           <h2>{editId ? "✏️ Modifier" : "➕ Créer un exercice"}</h2>
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <input placeholder="Titre *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
-            
-            {/* AJOUT : Langage */}
-            <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value })} required>
-              <option value="javascript">JavaScript</option>
-              <option value="python">Python</option>
-            </select>
-
-            {/* AJOUT : Difficulté */}
-            <select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })} required>
-              <option value="Facile">Facile</option>
-              <option value="Moyen">Moyen</option>
-              <option value="Difficile">Difficile</option>
-            </select>
-
             <textarea placeholder="Description *" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={4} required />
             <input placeholder="Votre nom *" value={form.teacherName} onChange={e => setForm({ ...form, teacherName: e.target.value })} required />
-            <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value, testCode: "" })}>
-              <option value="javascript">JavaScript</option>
-              <option value="python">Python</option>
-            </select>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Langage *</label>
+                <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value, testCode: "" })} required style={{ width: "100%" }}>
+                  <option value="javascript">JavaScript</option>
+                  <option value="python">Python</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Difficulté *</label>
+                <select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })} required style={{ width: "100%" }}>
+                  <option value="Facile">Facile</option>
+                  <option value="Moyen">Moyen</option>
+                  <option value="Difficile">Difficile</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Classe cible</label>
+              <select value={form.classCode} onChange={e => setForm({ ...form, classCode: e.target.value })} style={{ width: "100%" }}>
+                <option value="">Toutes les classes</option>
+                <option value="CP1">CP1</option>
+                <option value="CP2">CP2</option>
+                <option value="CI1">CI1</option>
+                <option value="CI2">CI2</option>
+              </select>
+            </div>
             <div>
               <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6, display: "block" }}>
                 Tests unitaires ({form.language === "python" ? "pytest" : "Jest"})
@@ -754,21 +864,28 @@ function TeacherView({ exercises, fetchExercises }) {
         </div>
         <div style={{ flex: 2 }}>
           <h2>📋 Mes Exercices ({exercises.length})</h2>
-          {exercises.map(ex => (
-            <div key={ex._id} style={{ background: "#fff", padding: 16, marginBottom: 12, borderRadius: 8, boxShadow: "0 2px 6px rgba(0,0,0,.08)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong>{ex.title}</strong>
-                  <span style={{ marginLeft: 8, fontSize: 11, color: "#6b7280" }}>{ex.language}</span>
-                  {ex.testCode && <span style={{ marginLeft: 8, fontSize: 11, background: "#dcfce7", color: "#166534", padding: "1px 6px", borderRadius: 4 }}>🧪 Tests</span>}
-                </div>
-                <div>
-                  <button onClick={() => { setEditId(ex._id); setForm({ ...ex, testCode: ex.testCode || "" }); }} style={{ background: "orange", border: "none", color: "white", marginRight: "5px", padding: "4px 8px", borderRadius: 4, cursor: "pointer" }}>✏️</button>
-                  <button onClick={() => handleDelete(ex._id)} style={{ background: "red", border: "none", color: "white", padding: "4px 8px", borderRadius: 4, cursor: "pointer" }}>🗑️</button>
+          {exercises.map(ex => {
+            const diffColor = ex.difficulty === "Facile" ? "#16a34a" : ex.difficulty === "Difficile" ? "#dc2626" : "#d97706";
+            return (
+              <div key={ex._id} style={{ background: "#fff", padding: 14, marginBottom: 10, borderRadius: 8, boxShadow: "0 2px 6px rgba(0,0,0,.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <strong style={{ color: "#1e293b" }}>{ex.title}</strong>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                      <TagBadge label={ex.language === "python" ? "Python" : "JavaScript"} color="#6366f1" />
+                      <TagBadge label={ex.difficulty} color={diffColor} />
+                      {ex.classCode && ex.classCode !== "public" && <TagBadge label={ex.classCode} color="#0891b2" />}
+                      {ex.testCode && <TagBadge label="🧪 Tests" color="#10b981" />}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 10 }}>
+                    <button onClick={() => { setEditId(ex._id); setForm({ ...ex, testCode: ex.testCode || "" }); }} style={{ background: "#f59e0b", border: "none", color: "white", padding: "4px 10px", borderRadius: 4, cursor: "pointer" }}>✏️</button>
+                    <button onClick={() => handleDelete(ex._id)} style={{ background: "#ef4444", border: "none", color: "white", padding: "4px 10px", borderRadius: 4, cursor: "pointer" }}>🗑️</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <SubmissionsTable />
         </div>
